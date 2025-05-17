@@ -1,278 +1,334 @@
-// lib/screens/dashboard_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../database/database_helper.dart';
-import '../models/expense.dart';
-import '../utils/constants.dart';
-import '../widgets/expense_list.dart';
-import '../widgets/summary_card.dart';
-import '../widgets/category_filter.dart';
-import 'auth/login_screen.dart';
-import 'expense_form_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Para gestionar datos de sesión
+import '../database/database_helper.dart'; // Para acceder a la base de datos
+import '../models/expense.dart'; // Modelo de gastos
+import '../utils/constants.dart'; // Constantes de la aplicación
+import '../widgets/expense_list.dart'; // Widget de lista de gastos
+import '../widgets/summary_card.dart'; // Widget de tarjeta resumen
+import '../widgets/category_filter.dart'; // Widget de filtro por categorías
+import 'auth/login_screen.dart'; // Pantalla de inicio de sesión
+import 'expense_form_screen.dart'; // Pantalla de formulario de gastos
 
+/// Pantalla principal (Dashboard) de la aplicación.
+/// Muestra el resumen y listado de gastos del usuario con opciones de filtrado.
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+ const DashboardScreen({super.key});
 
-  @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+ @override
+ State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final _databaseHelper = DatabaseHelper();
-  List<Expense> _expenses = [];
-  List<Expense> _filteredExpenses = [];
-  double _totalExpenses = 0;
-  double _filteredTotalExpenses = 0;
-  bool _isLoading = true;
-  String? _selectedCategory;
+ // Instancia del helper de base de datos para realizar operaciones
+ final _databaseHelper = DatabaseHelper();
+ 
+ // Listas de gastos (original y filtrada)
+ List<Expense> _expenses = []; // Todos los gastos del usuario
+ List<Expense> _filteredExpenses = []; // Gastos filtrados por categoría
+ 
+ // Variables para los totales
+ double _totalExpenses = 0; // Total de todos los gastos
+ double _filteredTotalExpenses = 0; // Total de los gastos filtrados
+ 
+ // Estado de carga
+ bool _isLoading = true;
+ 
+ // Categoría seleccionada para filtrar (null si no hay filtro)
+ String? _selectedCategory;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadExpenses();
-  }
+ @override
+ void initState() {
+   super.initState();
+   // Cargamos los gastos cuando se inicia la pantalla
+   _loadExpenses();
+ }
 
-  Future<void> _loadExpenses() async {
-    setState(() {
-      _isLoading = true;
-    });
+ /// Carga los gastos del usuario desde la base de datos.
+ /// También verifica si hay una sesión activa.
+ Future<void> _loadExpenses() async {
+   // Activamos el indicador de carga
+   setState(() {
+     _isLoading = true;
+   });
 
-    try {
-      if (UserSession.userId == null) {
-        // Cargar datos de sesión si no existen
-        final prefs = await SharedPreferences.getInstance();
-        final userId = prefs.getInt(AppConstants.userIdKey);
-        final email = prefs.getString(AppConstants.userEmailKey);
-        final fullName = prefs.getString(AppConstants.userFullNameKey);
-        final isLoggedIn = prefs.getBool(AppConstants.isLoggedInKey) ?? false;
+   try {
+     // Verificar si hay información de sesión en memoria
+     if (UserSession.userId == null) {
+       // Si no hay, intentamos cargar desde SharedPreferences
+       final prefs = await SharedPreferences.getInstance();
+       final userId = prefs.getInt(AppConstants.userIdKey);
+       final email = prefs.getString(AppConstants.userEmailKey);
+       final fullName = prefs.getString(AppConstants.userFullNameKey);
+       final isLoggedIn = prefs.getBool(AppConstants.isLoggedInKey) ?? false;
 
-        if (userId != null && email != null && fullName != null && isLoggedIn) {
-          UserSession.userId = userId;
-          UserSession.userEmail = email;
-          UserSession.userFullName = fullName;
-          UserSession.isLoggedIn = true;
-        } else {
-          // Redirigir al login si no hay sesión
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const LoginScreen()),
-            );
-          }
-          return;
-        }
-      }
+       // Si encontramos los datos en SharedPreferences, los cargamos en memoria
+       if (userId != null && email != null && fullName != null && isLoggedIn) {
+         UserSession.userId = userId;
+         UserSession.userEmail = email;
+         UserSession.userFullName = fullName;
+         UserSession.isLoggedIn = true;
+       } else {
+         // Si no hay datos de sesión, redirigimos al login
+         if (mounted) {
+           Navigator.pushReplacement(
+             context,
+             MaterialPageRoute(builder: (context) => const LoginScreen()),
+           );
+         }
+         return; // Terminamos la ejecución para no continuar con la carga de gastos
+       }
+     }
 
-      // Cargar gastos del usuario
-      final expenses = await _databaseHelper.getUserExpenses(UserSession.userId!);
-      final totalExpenses = await _databaseHelper.getTotalExpenses(UserSession.userId!);
+     // Cargamos los gastos del usuario desde la base de datos
+     final expenses = await _databaseHelper.getUserExpenses(UserSession.userId!);
+     // Calculamos el total de gastos
+     final totalExpenses = await _databaseHelper.getTotalExpenses(UserSession.userId!);
 
-      setState(() {
-        _expenses = expenses;
-        _filteredExpenses = expenses;
-        _totalExpenses = totalExpenses;
-        _filteredTotalExpenses = totalExpenses;
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al cargar datos: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
+     // Actualizamos el estado con los datos cargados
+     setState(() {
+       _expenses = expenses;
+       _filteredExpenses = expenses; // Inicialmente mostramos todos los gastos
+       _totalExpenses = totalExpenses;
+       _filteredTotalExpenses = totalExpenses; // Inicialmente el total filtrado es igual al total
+       _isLoading = false; // Desactivamos el indicador de carga
+     });
+   } catch (e) {
+     // Si ocurre un error durante la carga, mostramos un mensaje
+     if (mounted) {
+       ScaffoldMessenger.of(context).showSnackBar(
+         SnackBar(
+           content: Text('Error al cargar datos: ${e.toString()}'),
+           backgroundColor: Colors.red,
+         ),
+       );
+       // Desactivamos el indicador de carga aunque haya error
+       setState(() {
+         _isLoading = false;
+       });
+     }
+   }
+ }
 
-  void _filterExpensesByCategory(String? category) {
-    setState(() {
-      _selectedCategory = category;
-      
-      if (category == null) {
-        // Si no hay categoría seleccionada, mostrar todos los gastos
-        _filteredExpenses = _expenses;
-        _filteredTotalExpenses = _totalExpenses;
-      } else {
-        // Filtrar gastos por categoría seleccionada
-        _filteredExpenses = _expenses.where((expense) => expense.category == category).toList();
-        
-        // Calcular el total de gastos filtrados
-        _filteredTotalExpenses = _filteredExpenses.fold(
-          0, (sum, expense) => sum + expense.amount);
-      }
-    });
-  }
+ /// Filtra los gastos por categoría seleccionada.
+ /// Si category es null, muestra todos los gastos.
+ void _filterExpensesByCategory(String? category) {
+   setState(() {
+     _selectedCategory = category;
+     
+     if (category == null) {
+       // Si no hay categoría seleccionada, mostramos todos los gastos
+       _filteredExpenses = _expenses;
+       _filteredTotalExpenses = _totalExpenses;
+     } else {
+       // Filtramos los gastos por la categoría seleccionada
+       _filteredExpenses = _expenses.where((expense) => expense.category == category).toList();
+       
+       // Calculamos el total de los gastos filtrados
+       _filteredTotalExpenses = _filteredExpenses.fold(
+         0, (sum, expense) => sum + expense.amount);
+     }
+   });
+ }
 
-  Future<void> _onEditExpense(Expense expense) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ExpenseFormScreen(
-          expense: expense,
-        ),
-      ),
-    );
+ /// Maneja la edición de un gasto existente.
+ /// Navega a la pantalla de formulario y recarga los gastos si hubo cambios.
+ Future<void> _onEditExpense(Expense expense) async {
+   // Navegamos a la pantalla de formulario pasando el gasto a editar
+   final result = await Navigator.push(
+     context,
+     MaterialPageRoute(
+       builder: (context) => ExpenseFormScreen(
+         expense: expense, // Pasamos el gasto existente para editar
+       ),
+     ),
+   );
 
-    if (result == true) {
-      _loadExpenses();
-    }
-  }
+   // Si el resultado es true, significa que se editó el gasto
+   if (result == true) {
+     // Recargamos los gastos para ver los cambios
+     _loadExpenses();
+   }
+ }
 
-  Future<void> _onDeleteExpense(Expense expense) async {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text(AppConstants.confirmDeleteTitle),
-          content: const Text(AppConstants.confirmDeleteMessage),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(context).pop();
-                try {
-                  await _databaseHelper.deleteExpense(expense.id!);
-                  _loadExpenses();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Gasto eliminado exitosamente'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error al eliminar gasto: ${e.toString()}'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                }
-              },
-              child: const Text('Eliminar'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+ /// Maneja la eliminación de un gasto.
+ /// Muestra un diálogo de confirmación antes de eliminar.
+ Future<void> _onDeleteExpense(Expense expense) async {
+   // Mostramos un diálogo de confirmación
+   showDialog(
+     context: context,
+     builder: (BuildContext context) {
+       return AlertDialog(
+         title: const Text(AppConstants.confirmDeleteTitle),
+         content: const Text(AppConstants.confirmDeleteMessage),
+         actions: [
+           // Botón para cancelar la eliminación
+           TextButton(
+             onPressed: () {
+               Navigator.of(context).pop(); // Cerramos el diálogo
+             },
+             child: const Text('Cancelar'),
+           ),
+           // Botón para confirmar la eliminación
+           TextButton(
+             onPressed: () async {
+               Navigator.of(context).pop(); // Cerramos el diálogo
+               try {
+                 // Eliminamos el gasto de la base de datos
+                 await _databaseHelper.deleteExpense(expense.id!);
+                 // Recargamos los gastos para ver los cambios
+                 _loadExpenses();
+                 // Mostramos mensaje de éxito
+                 if (mounted) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     const SnackBar(
+                       content: Text('Gasto eliminado exitosamente'),
+                       backgroundColor: Colors.green,
+                     ),
+                   );
+                 }
+               } catch (e) {
+                 // Si ocurre un error durante la eliminación, mostramos mensaje
+                 if (mounted) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     SnackBar(
+                       content: Text('Error al eliminar gasto: ${e.toString()}'),
+                       backgroundColor: Colors.red,
+                     ),
+                   );
+                 }
+               }
+             },
+             child: const Text('Eliminar'),
+           ),
+         ],
+       );
+     },
+   );
+ }
 
-  Future<void> _logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    UserSession.userId = null;
-    UserSession.userEmail = null;
-    UserSession.userFullName = null;
-    UserSession.isLoggedIn = false;
+ /// Maneja el cierre de sesión del usuario.
+ /// Limpia los datos de sesión y redirige a la pantalla de login.
+ Future<void> _logout() async {
+   // Eliminamos los datos de sesión de SharedPreferences
+   final prefs = await SharedPreferences.getInstance();
+   await prefs.clear();
+   
+   // Limpiamos los datos de sesión en memoria
+   UserSession.userId = null;
+   UserSession.userEmail = null;
+   UserSession.userFullName = null;
+   UserSession.isLoggedIn = false;
 
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
-    }
-  }
+   // Redirigimos al login
+   if (mounted) {
+     Navigator.pushReplacement(
+       context,
+       MaterialPageRoute(builder: (context) => const LoginScreen()),
+     );
+   }
+ }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppConstants.dashboardTitle),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadExpenses,
-            tooltip: 'Actualizar datos',
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: 'Cerrar sesión',
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadExpenses,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Hola, ${UserSession.userFullName}',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Resumen de tus gastos personales',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: Colors.grey[600],
-                          ),
-                    ),
-                    const SizedBox(height: 16),
-                    SummaryCard(
-                      totalExpenses: _filteredTotalExpenses,
-                      totalTransactions: _filteredExpenses.length,
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Transacciones recientes',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (_expenses.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      CategoryFilter(
-                        categories: ExpenseCategories.categories,
-                        selectedCategory: _selectedCategory,
-                        onCategorySelected: _filterExpensesByCategory,
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    ExpenseList(
-                      expenses: _filteredExpenses,
-                      onEditExpense: _onEditExpense,
-                      onDeleteExpense: _onDeleteExpense,
-                    ),
-                  ],
-                ),
-              ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const ExpenseFormScreen(),
-            ),
-          );
+ @override
+ Widget build(BuildContext context) {
+   // Construimos la interfaz del dashboard
+   return Scaffold(
+     appBar: AppBar(
+       title: const Text(AppConstants.dashboardTitle),
+       actions: [
+         // Botón para recargar los datos
+         IconButton(
+           icon: const Icon(Icons.refresh),
+           onPressed: _loadExpenses,
+           tooltip: 'Actualizar datos',
+         ),
+         // Botón para cerrar sesión
+         IconButton(
+           icon: const Icon(Icons.logout),
+           onPressed: _logout,
+           tooltip: 'Cerrar sesión',
+         ),
+       ],
+     ),
+     // Usamos RefreshIndicator para permitir recargar con el gesto pull-to-refresh
+     body: RefreshIndicator(
+       onRefresh: _loadExpenses,
+       child: _isLoading
+           ? const Center(child: CircularProgressIndicator()) // Indicador de carga
+           : SingleChildScrollView(
+               physics: const AlwaysScrollableScrollPhysics(), // Permite scroll aunque haya poco contenido
+               padding: const EdgeInsets.all(16),
+               child: Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+                   // Saludo personalizado
+                   Text(
+                     'Hola, ${UserSession.userFullName}',
+                     style: Theme.of(context).textTheme.titleLarge,
+                   ),
+                   const SizedBox(height: 4),
+                   // Subtítulo de la pantalla
+                   Text(
+                     'Resumen de tus gastos personales',
+                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                           color: Colors.grey[600],
+                         ),
+                   ),
+                   const SizedBox(height: 16),
+                   // Tarjeta resumen con los totales
+                   SummaryCard(
+                     totalExpenses: _filteredTotalExpenses, // Usamos los totales filtrados
+                     totalTransactions: _filteredExpenses.length,
+                   ),
+                   const SizedBox(height: 24),
+                   // Título de la sección de transacciones
+                   const Text(
+                     'Transacciones recientes',
+                     style: TextStyle(
+                       fontSize: 18,
+                       fontWeight: FontWeight.bold,
+                     ),
+                   ),
+                   // Widget de filtrado por categorías (solo si hay gastos)
+                   if (_expenses.isNotEmpty) ...[
+                     const SizedBox(height: 8),
+                     CategoryFilter(
+                       categories: ExpenseCategories.categories, // Lista de categorías disponibles
+                       selectedCategory: _selectedCategory, // Categoría actualmente seleccionada
+                       onCategorySelected: _filterExpensesByCategory, // Función de callback
+                     ),
+                   ],
+                   const SizedBox(height: 16),
+                   // Lista de gastos (filtrados)
+                   ExpenseList(
+                     expenses: _filteredExpenses, // Lista de gastos a mostrar
+                     onEditExpense: _onEditExpense, // Callback para editar
+                     onDeleteExpense: _onDeleteExpense, // Callback para eliminar
+                   ),
+                 ],
+               ),
+             ),
+     ),
+     // Botón flotante para agregar un nuevo gasto
+     floatingActionButton: FloatingActionButton(
+       onPressed: () async {
+         // Navegamos a la pantalla de formulario (modo creación)
+         final result = await Navigator.push(
+           context,
+           MaterialPageRoute(
+             builder: (context) => const ExpenseFormScreen(), // Sin pasar expense (modo creación)
+           ),
+         );
 
-          if (result == true) {
-            _loadExpenses();
-          }
-        },
-        tooltip: 'Agregar gasto',
-        child: const Icon(Icons.add),
-      ),
-    );
-  }
+         // Si el resultado es true, significa que se creó un gasto
+         if (result == true) {
+           // Recargamos los gastos para ver el nuevo gasto
+           _loadExpenses();
+         }
+       },
+       tooltip: 'Agregar gasto',
+       child: const Icon(Icons.add), // Icono de suma
+     ),
+   );
+ }
 }
